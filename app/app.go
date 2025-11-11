@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"shawty-ur/api/auth"
 	"shawty-ur/config"
 
 	"github.com/go-chi/chi/v5"
@@ -21,6 +22,8 @@ type Application struct {
 	Config              config.Config
 	DbConnector         *sql.DB
 	RedisClient         *redis.Client
+	OAuthConfig         *auth.OAuthConfig
+	SessionStore        *auth.SessionStore
 	routeRegistrars     []RouteRegistrar
 	soloRouteRegistrars []RouteRegistrar
 }

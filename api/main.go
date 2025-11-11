@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"shawty-ur/api/auth"
 	"shawty-ur/api/routes"
 	"shawty-ur/api/utils/db"
 	"shawty-ur/api/utils/redisUtil"
@@ -68,18 +69,31 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Initialize OAuth configuration
+	oauthConfig := auth.NewOAuthConfig(
+		os.Getenv("GOOGLE_CLIENT_ID"),
+		os.Getenv("GOOGLE_CLIENT_SECRET"),
+		os.Getenv("GOOGLE_REDIRECT_URL"),
+	)
+
+	// Initialize session store
+	sessionStore := auth.NewSessionStore(os.Getenv("SESSION_KEY"))
+
 	application := &app.Application{
-		Config:      cfg,
-		DbConnector: dbConn,
-		RedisClient: redisClient,
+		Config:       cfg,
+		DbConnector:  dbConn,
+		RedisClient:  redisClient,
+		OAuthConfig:  oauthConfig,
+		SessionStore: sessionStore,
 	}
 
 	// Register all route handlers
 	// Adding new routes is as simple as adding new RegisterXRoutes functions here
 	application.RegisterRoutes(
 		routes.RegisterHealthRoutes,
-		routes.RegisterUserRoutes, // Example: easily add more routes
+		routes.RegisterUserRoutes,
 		routes.RegisterServiceRoutes,
+		routes.RegisterAuthRoutes, // OAuth authentication routes
 	)
 	application.RegisterSoloRoutes(
 		routes.RegisterResolveRoutes,
