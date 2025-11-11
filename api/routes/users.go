@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"net/http"
 	"time"
@@ -71,26 +72,26 @@ func RegisterUserRoutes(r chi.Router, application *app.Application) {
 	r.Delete("/users/{id}", deleteUserHandler(application))
 }
 
-func (user *User) createUser(ctx context.Context, tx *sql.Tx) error {
-	slog.Info("Creating User Query: ", "email: ", user.Email, "Password: ", user.Password.text)
-	query := `INSERT INTO users(email, password, username)
-			VALUES ($1, $2, $3) ON CONFLICT(email) DO NOTHING
-			RETURNING id created_At, updated_at`
+// func (user *User) createUser(ctx context.Context, tx *sql.Tx) error {
+// 	slog.Info("Creating User Query: ", "email: ", user.Email, "Password: ", user.Password.text)
+// 	query := `INSERT INTO users(email, password, username)
+// 			VALUES ($1, $2, $3) ON CONFLICT(email) DO NOTHING
+// 			RETURNING id created_At, updated_at`
 
-	err := tx.QueryRowContext(ctx, query,
-		user.Email,
-		user.Password.hash,
-		user.Username).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+// 	err := tx.QueryRowContext(ctx, query,
+// 		user.Email,
+// 		user.Password.hash,
+// 		user.Username).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 
-	if err == sql.ErrNoRows {
-		//user already exists
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	return nil
-}
+// 	if err == sql.ErrNoRows {
+// 		//user already exists
+// 		return nil
+// 	}
+// 	if err != nil {
+// 		return err
+// 	}
+// 	return nil
+// }
 
 func listUsersHandler(app *app.Application) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -150,14 +151,33 @@ func loginUserHandler(app *app.Application) http.HandlerFunc {
 			utils.WriteJSON(w, http.StatusBadRequest, "Invalid User Creation Request Body")
 		}
 
-		user := new(User)
+		user := new(models.User)
 		user.Email = request.Email
 		user.Username = request.Username
+		user.Password.Text = request.Password
 
-		return
-		// txErr = db.WithTx(app.DbConnector, req.Context(), func(tx *sql.Tx) error{
-		// 	if err =
-		// })
+		txErr := db.WithTx(app.DbConnector, req.Context(), func(tx *sql.Tx) error {
+			userStore := helper.NewUserStore(app.DbConnector)
+
+			err := userStore.GetUserByUsernameOrEmail(req.Context(), tx, user)
+			if err != nil {
+				log.Printf("ERROR:: Cannot Find user with username: %s, email: %s", user.Username, user.Email)
+				utils.WriteJSON(w, http.StatusBadRequest, "Invalid Username/Email")
+			}
+
+			if err:= user.CompareHash(); err!=nil{
+				slog.Error("Cannot login Invalid Password", "err: ", err)
+				utils.WriteJSON(w, http.StatusForbidden, "Invalid Username/Password")
+				return nil
+			}
+			return nil
+		})
+
+		if txErr != nil {
+			slog.Error("Error in create user tx!!! ", "err", txErr)
+			utils.WriteJSON(w, http.StatusInternalServerError, "Error creating new User!!!")
+			return
+		}
 	}
 }
 
