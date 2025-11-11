@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -165,7 +164,7 @@ func loginUserHandler(app *app.Application) http.HandlerFunc {
 				utils.WriteJSON(w, http.StatusBadRequest, "Invalid Username/Email")
 			}
 
-			if err:= user.CompareHash(); err!=nil{
+			if err := user.CompareHash(); err != nil {
 				slog.Error("Cannot login Invalid Password", "err: ", err)
 				utils.WriteJSON(w, http.StatusForbidden, "Invalid Username/Password")
 				return nil
