@@ -93,7 +93,7 @@ func main() {
 		routes.RegisterHealthRoutes,
 		routes.RegisterUserRoutes,
 		routes.RegisterServiceRoutes,
-		routes.RegisterAuthRoutes, // OAuth authentication routes
+		routes.RegisterAuthRoutes,
 	)
 	application.RegisterSoloRoutes(
 		routes.RegisterResolveRoutes,
