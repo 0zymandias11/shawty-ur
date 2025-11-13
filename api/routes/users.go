@@ -120,6 +120,7 @@ func createUserHandler(app *app.Application) http.HandlerFunc {
 			return
 		}
 		user := new(models.User)
+		user.Password.Text = request.Password
 		if err := user.HashPassword(request.Password); err != nil {
 			slog.Error("Error in hashing User Password ", "err: ", err)
 			utils.WriteJSON(w, http.StatusInternalServerError, "Failed to process password")
@@ -164,6 +165,7 @@ func loginUserHandler(app *app.Application) http.HandlerFunc {
 		request := new(UserPayload)
 		if err := json.NewDecoder(req.Body).Decode(&request); err != nil {
 			utils.WriteJSON(w, http.StatusBadRequest, "Invalid User Creation Request Body")
+			return // FIXED: Added return
 		}
 
 		user := new(models.User)
@@ -177,20 +179,19 @@ func loginUserHandler(app *app.Application) http.HandlerFunc {
 			err := userStore.GetUserByUsernameOrEmail(req.Context(), tx, user)
 			if err != nil {
 				log.Printf("ERROR:: Cannot Find user with username: %s, email: %s", user.Username, user.Email)
-				utils.WriteJSON(w, http.StatusBadRequest, "Invalid Username/Email")
+				return err // FIXED: Return error instead of writing response
 			}
 
 			if err := user.CompareHash(); err != nil {
 				slog.Error("Cannot login Invalid Password", "err: ", err)
-				utils.WriteJSON(w, http.StatusForbidden, "Invalid Username/Password")
-				return nil
+				return err // FIXED: Return error to trigger txErr check
 			}
 			return nil
 		})
 
 		if txErr != nil {
-			slog.Error("Error in create user tx!!! ", "err", txErr)
-			utils.WriteJSON(w, http.StatusInternalServerError, "Error creating new User!!!")
+			slog.Error("Error in login user tx!!! ", "err", txErr)
+			utils.WriteJSON(w, http.StatusForbidden, map[string]string{"error": "Invalid Username/Password"})
 			return
 		}
 

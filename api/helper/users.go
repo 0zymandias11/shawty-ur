@@ -20,8 +20,8 @@ func NewUserStore(db *sql.DB) *UserStore {
 
 func (s *UserStore) CreateUser(ctx context.Context, tx *sql.Tx, user *models.User) error {
 	slog.Info("Creating User Query: ", "email: ", user.Email)
-	query := `INSERT INTO users(email, password, username)
-			VALUES ($1, $2, $3) ON CONFLICT(email) DO NOTHING
+	query := `INSERT INTO users(email, password_hash, username, provider)
+			VALUES ($1, $2, $3, 'local') ON CONFLICT(email) DO NOTHING
 			RETURNING id, created_at, updated_at`
 
 	err := tx.QueryRowContext(ctx, query,
@@ -31,6 +31,8 @@ func (s *UserStore) CreateUser(ctx context.Context, tx *sql.Tx, user *models.Use
 
 	if err == sql.ErrNoRows {
 		//user already exists
+		// return errors.New("duplicate_user")
+		slog.Error("Error creating user !!!", "err: ", err)
 		return nil
 	}
 	if err != nil {
@@ -40,9 +42,9 @@ func (s *UserStore) CreateUser(ctx context.Context, tx *sql.Tx, user *models.Use
 }
 
 // GetUserByUsernameOrEmail retrieves a user by username or email
-func (s *UserStore) GetUserByUsernameOrEmail(ctx context.Context, tx *sql.Tx, user *models.User) (error) {
+func (s *UserStore) GetUserByUsernameOrEmail(ctx context.Context, tx *sql.Tx, user *models.User) error {
 	query := `
-		SELECT id, username, email, password, created_at, updated_at
+		SELECT id, username, email, password_hash, created_at, updated_at
 		FROM users
 		WHERE username = $1 OR email = $2
 	`
@@ -68,10 +70,11 @@ func (s *UserStore) GetUserByUsernameOrEmail(ctx context.Context, tx *sql.Tx, us
 
 	return nil
 }
+
 // GetByEmail retrieves a user by email
 func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	query := `
-		SELECT id, username, email, password, created_at, updated_at
+		SELECT id, username, email, password_hash, created_at, updated_at
 		FROM users
 		WHERE email = $1
 	`
@@ -102,7 +105,7 @@ func (s *UserStore) GetUserByEmail(ctx context.Context, email string) (*models.U
 // List retrieves all users
 func (s *UserStore) ListUsers(ctx context.Context) ([]*models.User, error) {
 	query := `
-		SELECT id, username, email, created_at, updated_at
+		SELECT id, username, email, created_at, updated_at, provider
 		FROM users
 		ORDER BY created_at DESC
 	`
@@ -123,6 +126,7 @@ func (s *UserStore) ListUsers(ctx context.Context) ([]*models.User, error) {
 			&user.Email,
 			&user.CreatedAt,
 			&user.UpdatedAt,
+			&user.Provider,
 		)
 		if err != nil {
 			slog.Error("Failed to scan user row", "error", err)

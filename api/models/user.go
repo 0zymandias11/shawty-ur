@@ -41,11 +41,12 @@ type GoogleUserInfo struct {
 
 // HashPassword hashes the user's password
 func (u *User) HashPassword(plaintext string) error {
-	hash, err := bcrypt.GenerateFromPassword([]byte(u.Password.Text), bcrypt.DefaultCost)
+	hash, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
 	u.Password.Hash = hash
+	u.Password.Text = plaintext // Store for later comparison
 	return nil
 }
 
