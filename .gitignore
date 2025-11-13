@@ -5,6 +5,10 @@ bin/
 *.dll
 *.so
 *.dylib
+"api/api"
+
+#compiled binaries
+"shawty-ur"
 
 # Test binary, built with `go test -c`
 *.test
