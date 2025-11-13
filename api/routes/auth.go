@@ -50,6 +50,7 @@ func googleCallbackHandler(application *app.Application) http.HandlerFunc {
 		// Validate state token
 		state := r.URL.Query().Get("state")
 		valid, err := application.SessionStore.ValidateState(r, state)
+		slog.Info("Google Auth state: ", "state: ", state, "valid: ", valid)
 		if err != nil || !valid {
 			slog.Error("Invalid state token", "error", err)
 			utils.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "Invalid state token"})
@@ -58,6 +59,7 @@ func googleCallbackHandler(application *app.Application) http.HandlerFunc {
 
 		// Get authorization code
 		code := r.URL.Query().Get("code")
+		slog.Info("Google Auth Code: ", "code: ", code)
 		if code == "" {
 			slog.Error("No authorization code provided")
 			utils.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "No authorization code"})
