@@ -94,9 +94,20 @@ func RegisterUserRoutes(r chi.Router, application *app.Application) {
 
 func listUsersHandler(app *app.Application) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Access app.DbConnector to query database
+
+		userStore := helper.NewUserStore(app.DbConnector)
+		userList, err := userStore.ListUsers(r.Context())
+		if err != nil {
+			slog.Error("Error getting user list")
+			utils.WriteJSON(w, http.StatusInternalServerError, "Internal server Error")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("List users"))
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":   "success",
+			"userList": userList,
+		})
 	}
 }
 
@@ -115,9 +126,9 @@ func createUserHandler(app *app.Application) http.HandlerFunc {
 			return
 		}
 		user.Email = request.Email
-		if request.Username==""{
+		if request.Username == "" {
 			user.Username = request.Email
-		}else{
+		} else {
 			user.Username = request.Username
 		}
 		user.Username = request.Username
@@ -182,6 +193,14 @@ func loginUserHandler(app *app.Application) http.HandlerFunc {
 			utils.WriteJSON(w, http.StatusInternalServerError, "Error creating new User!!!")
 			return
 		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status":   "success",
+			"ID":       user.ID,
+			"username": user.Username,
+		})
 	}
 }
 
