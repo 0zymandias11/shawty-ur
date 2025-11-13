@@ -30,7 +30,7 @@ type password struct {
 
 type User struct {
 	ID        int64     `json:"id"`
-	Username  string    `json:"username"`
+	Username  string    `json:"username,omitempty"`
 	Email     string    `json:"email"`
 	Password  password  `json:"password"`
 	CreatedAt time.Time `json:"created_at"`
@@ -54,13 +54,13 @@ func (password *password) Set(text string) error {
 	return nil
 }
 
-func (user *User) hashedPassword(password string) error {
-	if err := user.Password.Set(password); err != nil {
-		slog.Error("Error in password Hash Set", "err: ", err)
-		return err
-	}
-	return nil
-}
+// func (user *User) hashedPassword(password string) error {
+// 	if err := user.Password.Set(password); err != nil {
+// 		slog.Error("Error in password Hash Set", "err: ", err)
+// 		return err
+// 	}
+// 	return nil
+// }
 
 func RegisterUserRoutes(r chi.Router, application *app.Application) {
 	// All user routes go here
@@ -115,6 +115,11 @@ func createUserHandler(app *app.Application) http.HandlerFunc {
 			return
 		}
 		user.Email = request.Email
+		if request.Username==""{
+			user.Username = request.Email
+		}else{
+			user.Username = request.Username
+		}
 		user.Username = request.Username
 		slog.Info("Creating User: ", "email: ", user.Email, "Password: ", user.Password.Text)
 		txErr := db.WithTx(app.DbConnector, req.Context(), func(tx *sql.Tx) error {
