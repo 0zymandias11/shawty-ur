@@ -97,15 +97,11 @@ func googleCallbackHandler(application *app.Application) http.HandlerFunc {
 			return
 		}
 
-		// Return success response with user info
 		utils.WriteJSON(w, http.StatusOK, map[string]interface{}{
-			"message": "Successfully authenticated",
-			"user": map[string]interface{}{
-				"id":       user.ID,
-				"username": user.Username,
-				"email":    user.Email,
-				"provider": "google",
-			},
+			"status":   "success",
+			"username": sessionData.UserID,
+			"provider": sessionData.Provider,
+			"email":    sessionData.Email,
 		})
 	}
 }
