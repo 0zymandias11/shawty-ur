@@ -6,6 +6,8 @@ A modern URL shortening service built with Go, PostgreSQL, and Redis.
 
 - 🔗 URL shortening with custom short codes
 - 👥 User management and authentication
+- 🔐 Google OAuth 2.0 authentication
+- 🔒 Bcrypt password hashing for local accounts
 - 📊 Click analytics and tracking
 - ⚡ Redis caching for rate limiting
 - 🐘 PostgreSQL for persistent storage
@@ -82,7 +84,7 @@ make build && make run
 
 ## Configuration
 
-All configuration is stored in [.env](.env):
+All configuration is stored in `.env` (create from `.env.example`):
 
 ```bash
 # Server
@@ -101,11 +103,29 @@ REDIS_DB=0
 
 # Security
 JWT_SECRET=waifu_waguri
+SESSION_KEY=waifu-waguri
 
 # Rate Limiting
 RATE_LIMIT_REQUESTS=100
 RATE_LIMIT_WINDOW=1m
+
+# OAuth 2.0 (Google)
+GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your-client-secret
+GOOGLE_REDIRECT_URL=http://localhost:8080/api/v1/auth/google/callback
 ```
+
+### Setting up Google OAuth
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing one
+3. Enable "Google+ API" or "Google People API"
+4. Go to "Credentials" → "Create Credentials" → "OAuth 2.0 Client ID"
+5. Configure OAuth consent screen
+6. Add authorized redirect URI: `http://localhost:8080/api/v1/auth/google/callback`
+7. Copy the Client ID and Client Secret to your `.env` file
+
+**Important**: Keep your `.env` file secure and never commit it to version control.
 
 ## API Endpoints
 
@@ -114,10 +134,31 @@ RATE_LIMIT_WINDOW=1m
 GET /api/v1/health
 ```
 
+### Authentication
+
+#### Local Authentication (Email/Password)
+```bash
+POST /api/v1/users/register
+# Body: { "username": "john", "email": "john@example.com", "password": "secure123" }
+
+POST /api/v1/users/login
+# Body: { "username": "john", "password": "secure123" }
+# OR:   { "email": "john@example.com", "password": "secure123" }
+```
+
+#### OAuth Authentication (Google)
+```bash
+GET /api/v1/auth/google
+# Redirects to Google OAuth consent screen
+
+GET /api/v1/auth/google/callback
+# OAuth callback endpoint (handled automatically)
+```
+
 ### User Management
 ```bash
 GET    /api/v1/users       # List all users
-POST   /api/v1/users       # Create user
+POST   /api/v1/users       # Create user (deprecated - use /register)
 GET    /api/v1/users/{id}  # Get user by ID
 DELETE /api/v1/users/{id}  # Delete user
 ```
@@ -132,12 +173,18 @@ GET  /api/v1/resolve   # Resolve a short URL
 
 ### Users Table
 ```sql
-- id (bigserial)
-- username (varchar, unique)
-- email (varchar, unique)
-- password_hash (varchar)
-- created_at (timestamp)
-- updated_at (timestamp)
+- id (bigserial, primary key)
+- username (varchar(255), unique, not null)
+- email (varchar(255), unique, not null)
+- password_hash (varchar(255), nullable) -- NULL for OAuth users
+- provider (varchar(50), default 'local') -- 'local' or 'google'
+- provider_id (varchar(255), nullable) -- OAuth provider's user ID
+- avatar_url (varchar(512), nullable) -- Profile picture from OAuth
+- email_verified (boolean, default false)
+- created_at (timestamp with time zone)
+- updated_at (timestamp with time zone)
+
+INDEX: idx_users_provider_id ON (provider, provider_id) WHERE provider != 'local'
 ```
 
 ### URLs Table
@@ -236,16 +283,67 @@ curl http://localhost:8080/api/v1/health
 # Response: OK
 ```
 
+### User Registration (Local)
+```bash
+curl -X POST http://localhost:8080/api/v1/users/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "email": "test@example.com",
+    "password": "secure123"
+  }'
+
+# Response:
+# {
+#   "id": 1,
+#   "username": "testuser",
+#   "email": "test@example.com",
+#   "provider": "local",
+#   "email_verified": false,
+#   "created_at": "2025-11-15T10:30:00Z"
+# }
+```
+
+### User Login
+```bash
+curl -X POST http://localhost:8080/api/v1/users/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "username": "testuser",
+    "password": "secure123"
+  }'
+
+# Response:
+# {
+#   "status": "success",
+#   "ID": 1,
+#   "username": "testuser"
+# }
+```
+
+### Google OAuth Login
+```bash
+# Open in browser:
+open http://localhost:8080/api/v1/auth/google
+
+# This will:
+# 1. Redirect to Google login
+# 2. Ask for consent
+# 3. Redirect back to your callback
+# 4. Create/update user in database
+# 5. Set session cookie
+```
+
 ### List Users
 ```bash
 curl http://localhost:8080/api/v1/users
-# Response: List users
+# Response: List of all users with their details
 ```
 
 ### Get User by ID
 ```bash
-curl http://localhost:8080/api/v1/users/123
-# Response: Get user: 123
+curl http://localhost:8080/api/v1/users/1
+# Response: User details for ID 1
 ```
 
 ## Docker Commands (Manual)
@@ -381,6 +479,26 @@ make migrate-reset
 make migrate-up
 ```
 
+### OAuth Issues
+
+#### "invalid_client" Error
+- Check that `GOOGLE_CLIENT_ID` has no leading/trailing spaces
+- Verify `GOOGLE_CLIENT_SECRET` is the actual secret (not a placeholder)
+- Ensure redirect URI in Google Console matches `GOOGLE_REDIRECT_URL` in `.env`
+
+#### "column password does not exist" Error
+- Database schema uses `password_hash`, not `password`
+- Run migrations: `make migrate-up`
+- Check migration 00004 was applied: `make migrate-status`
+
+#### Password Hash Mismatch
+- If you get bcrypt errors, existing users may have corrupted password hashes
+- Delete test users and re-register:
+  ```bash
+  docker exec -it shawty-postgres psql -U howl -d social \
+    -c "DELETE FROM users WHERE provider = 'local';"
+  ```
+
 ### Port Already in Use
 
 ```bash
@@ -404,6 +522,19 @@ CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/shawty-ur ./api
 
 # Binary size will be ~6-8MB (vs 9.7MB debug build)
 ```
+
+### Security Checklist for Production
+
+- [ ] Use strong, random values for `JWT_SECRET` and `SESSION_KEY`
+- [ ] Enable HTTPS with valid SSL certificates
+- [ ] Update `GOOGLE_REDIRECT_URL` to production domain
+- [ ] Set `DB_DSN` to use SSL mode: `sslmode=require`
+- [ ] Use strong passwords for PostgreSQL and Redis
+- [ ] Enable Redis authentication (`requirepass` in redis.conf)
+- [ ] Set up rate limiting for authentication endpoints
+- [ ] Configure CORS appropriately for your frontend domain
+- [ ] Never commit `.env` file to version control
+- [ ] Use environment variables or secrets management in production
 
 ### Docker Production Setup
 
