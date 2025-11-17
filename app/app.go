@@ -6,10 +6,12 @@ import (
 	"net/http"
 
 	"shawty-ur/api/auth"
+	promMiddleware "shawty-ur/api/middleware"
 	"shawty-ur/config"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -42,9 +44,11 @@ func (app *Application) Mount() *chi.Mux {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-
+	r.Use(promMiddleware.PrometheusMiddleware)
 	// Health check at root level (must come before catch-all routes)
 	r.Get("/health", app.healthCheckHandler)
+	// Prometheus metrics endpoint
+	r.Handle("/metrics", promhttp.Handler())
 
 	// Register versioned API routes
 	r.Route("/api/v1", func(r chi.Router) {

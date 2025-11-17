@@ -32,7 +32,7 @@ var (
 
 	ActiveConnections = promauto.NewGauge(
 		prometheus.GaugeOpts{
-			Name: "Active_Connections",
+			Name: "active_connections",
 			Help: "Number of active connections",
 		},
 	)
@@ -46,7 +46,7 @@ var (
 
 	DatabaseQueryDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{
-			Name: "database_query_duration in seconds",
+			Name: "database_query_duration_seconds",
 			Help: "Duration of each DB query in seconds",
 		},
 		[]string{"query_type"},
@@ -62,15 +62,15 @@ var (
 
 	CacheHits = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "Cache_hits_total",
+			Name: "cache_hits_total",
 			Help: "Total number of cache hits",
 		},
 	)
 
 	CacheMisses = promauto.NewCounter(
 		prometheus.CounterOpts{
-			Name: "Cache_miss_total",
-			Help: "Total numbe of cache misses",
+			Name: "cache_misses_total",
+			Help: "Total number of cache misses",
 		},
 	)
 )

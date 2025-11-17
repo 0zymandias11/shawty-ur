@@ -1,0 +1,36 @@
+# Global configuration
+global:
+  scrape_interval: 15s        # How often to scrape metrics
+  evaluation_interval: 15s    # How often to evaluate rules
+  
+# Scrape configurations
+scrape_configs:
+  # Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          instance: 'prometheus'
+
+  # Scrape your Go application
+  - job_name: 'shawty-ur'
+    static_configs:
+      - targets: ['app:8080']  # 'app' is the Docker service name
+        labels:
+          instance: 'shawty-ur-primary'
+    metrics_path: '/metrics'
+    scrape_interval: 5s  # More frequent for your app
+
+  # Scrape PostgreSQL exporter
+  - job_name: 'postgresql'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          instance: 'postgres-primary'
+
+  # Scrape Redis exporter
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          instance: 'redis-primary'

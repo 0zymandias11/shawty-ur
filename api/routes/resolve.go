@@ -4,9 +4,11 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"shawty-ur/api/metrics"
 	"shawty-ur/api/utils/redisUtil"
 	"shawty-ur/app"
 	"shawty-ur/config"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
@@ -24,6 +26,9 @@ func Resolve(app *app.Application) http.HandlerFunc {
 		hash := chi.URLParam(req, "url")
 		slog.Info("Resolving short URL", "hash", hash)
 
+		//Track Url Resolution Time
+		cacheStart := time.Now()
+
 		// Look up the original URL in Redis (DB 0 - where shorten() saves URLs)
 		value, err := app.RedisClient.Get(redisUtil.Ctx, hash).Result()
 		if err == redis.Nil {
@@ -35,7 +40,6 @@ func Resolve(app *app.Application) http.HandlerFunc {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 			return // ✅ MUST RETURN HERE!
 		}
-
 		// Connect to Redis DB 1 for analytics/counter
 		rInr, err := redisUtil.New(config.RedisConfig{
 			Addr:     os.Getenv("REDIS_ADDR"),
@@ -52,6 +56,9 @@ func Resolve(app *app.Application) http.HandlerFunc {
 			_ = rInr.Incr(redisUtil.Ctx, hash)
 		}
 
+		metrics.DatabaseQueryDuration.WithLabelValues("select_url").Observe(time.Since(cacheStart).Seconds())
+
+		metrics.UrlsResolvedTotal.Inc()
 		// Redirect to the original URL
 		slog.Info("Redirecting to original URL", "hash", hash, "url", value)
 		http.Redirect(w, req, value, http.StatusMovedPermanently)

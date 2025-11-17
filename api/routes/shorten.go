@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"shawty-ur/api/metrics"
 	"shawty-ur/api/utils/redisUtil"
 	"shawty-ur/app"
 	"shawty-ur/config"
@@ -49,6 +50,8 @@ func shorten(app *app.Application) http.HandlerFunc {
 			http.Error(w, "Invalid Request Body", http.StatusBadRequest)
 		}
 
+		//Track database query serving time
+		redisStart := time.Now()
 		r2, err := redisUtil.New(config.RedisConfig{
 			Addr:     os.Getenv("REDIS_ADDR"),
 			Password: os.Getenv("REDIS_PASSWORD"),
@@ -99,6 +102,10 @@ func shorten(app *app.Application) http.HandlerFunc {
 			}
 			val, _ := r1.Set(redisUtil.Ctx, hash, request.URL, request.Expiry*3600*time.Second).Result()
 			log.Println("Printing result of set in shorten: ", val)
+
+			metrics.DatabaseQueryDuration.WithLabelValues("insert_url").Observe(time.Since(redisStart).Seconds())
+
+			metrics.UrlsShortenedTotal.Inc()
 			resp := new(Response)
 			r2.Decr(redisUtil.Ctx, ip)
 
@@ -107,6 +114,8 @@ func shorten(app *app.Application) http.HandlerFunc {
 			ttl, _ := r2.TTL(redisUtil.Ctx, ip).Result()
 			resp.XTimeRemaining = int(ttl / time.Nanosecond / time.Minute)
 			resp.ShortUrl = os.Getenv("DOMAIN") + "/" + hash
+
+			//adding metrics
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
