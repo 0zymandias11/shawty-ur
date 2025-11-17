@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"shawty-ur/api/middleware"
 	"shawty-ur/api/utils/redisUtil"
 	"shawty-ur/app"
 	"shawty-ur/config"
@@ -23,7 +24,7 @@ import (
 
 type Request struct {
 	URL         string        `json:"url"`
-	CustomShort string        `json:"custom_short"`
+	CustomShort string        `json:"custom_short,omitempty"`
 	Expiry      time.Duration `json:"expiry"`
 }
 
@@ -67,9 +68,15 @@ func shorten(app *app.Application) http.HandlerFunc {
 
 		fmt.Println("Client IP:", ip)
 
+		// Determine quota based on authentication status
+		quota := os.Getenv("API_QUOTE_FREE") // Default for unauthenticated users
+		if middleware.IsAuthenticated(req) {
+			quota = os.Getenv("API_QUOTA") // Higher quota for authenticated users
+		}
+
 		value, err := r2.Get(redisUtil.Ctx, ip).Result()
 		if err == redis.Nil {
-			_ = r2.Set(redisUtil.Ctx, ip, os.Getenv("API_QUOTA"), 30*60*time.Second).Err()
+			_ = r2.Set(redisUtil.Ctx, ip, quota, 30*60*time.Second).Err()
 		} else {
 			valInt, _ := strconv.Atoi(value)
 			if valInt <= 0 {
