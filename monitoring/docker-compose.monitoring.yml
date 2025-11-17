@@ -1,35 +1,9 @@
 version: '3.8'
 
+# This file extends docker-compose.yml
+# Run with: docker-compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml up -d
+
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:15-alpine
-    container_name: shawty-postgres
-    environment:
-      POSTGRES_USER: howl
-      POSTGRES_PASSWORD: turnip_man1234
-      POSTGRES_DB: social
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    restart: unless-stopped
-    networks:
-      - shawty-network
-
-  # Redis Cache
-  redis:
-    image: redis:7-alpine
-    container_name: shawty-redis
-    command: redis-server --requirepass waifu_waguri
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
-    networks:
-      - shawty-network
-
   # Your existing app with network
   app:
     build:
@@ -114,7 +88,5 @@ networks:
     driver: bridge
 
 volumes:
-  postgres-data:
-  redis-data:
   prometheus-data:
   grafana-data:
