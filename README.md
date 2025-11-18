@@ -10,6 +10,9 @@ A modern URL shortening service built with Go, PostgreSQL, and Redis.
 - 🔒 Bcrypt password hashing for local accounts
 - 📊 Click analytics and tracking
 - ⚡ Redis caching for rate limiting
+- 🎯 Tiered API quotas (authenticated vs free users)
+- 📈 Prometheus metrics integration
+- 📊 Grafana dashboards for monitoring
 - 🐘 PostgreSQL for persistent storage
 - 🔄 Database migrations with Goose
 - 🐳 Docker support for easy deployment
@@ -20,10 +23,12 @@ A modern URL shortening service built with Go, PostgreSQL, and Redis.
 - **Redis**: Handles caching and rate limiting
 - **Chi Router**: HTTP routing with middleware support
 - **Goose**: Database migration management
+- **Prometheus**: Metrics collection and monitoring
+- **Grafana**: Visualization and dashboards
 
 ## Prerequisites
 
-- Go 1.25.1 or higher
+- Go 1.23.0 or higher
 - Docker & Docker Compose
 - Make (optional, for convenience)
 
@@ -51,6 +56,21 @@ docker-compose up -d
 This starts:
 - PostgreSQL on `localhost:5432`
 - Redis on `localhost:6379`
+
+### 2b. Start with Monitoring (Optional)
+
+To start the application with Prometheus and Grafana monitoring:
+
+```bash
+# Start all services including monitoring stack
+docker-compose -f docker-compose.yml -f monitoring/docker-compose.monitoring.yml up -d
+```
+
+This additionally starts:
+- **Prometheus** on `localhost:9090` - Metrics collection
+- **Grafana** on `localhost:3000` - Dashboards (admin/admin)
+- **PostgreSQL Exporter** on `localhost:9187` - Database metrics
+- **Redis Exporter** on `localhost:9121` - Cache metrics
 
 ### 3. Install Goose and Run Migrations
 
@@ -105,7 +125,9 @@ REDIS_DB=0
 JWT_SECRET=waifu_waguri
 SESSION_KEY=waifu-waguri
 
-# Rate Limiting
+# Rate Limiting & API Quotas
+API_QUOTA=100              # Quota for authenticated users (per 30 minutes)
+API_QUOTE_FREE=10          # Quota for unauthenticated users (per 30 minutes)
 RATE_LIMIT_REQUESTS=100
 RATE_LIMIT_WINDOW=1m
 
@@ -131,7 +153,14 @@ GOOGLE_REDIRECT_URL=http://localhost:8080/api/v1/auth/google/callback
 
 ### Health Check
 ```bash
-GET /api/v1/health
+GET /health
+# Response: OK
+```
+
+### Metrics (Prometheus)
+```bash
+GET /metrics
+# Response: Prometheus-formatted metrics
 ```
 
 ### Authentication
@@ -164,9 +193,12 @@ DELETE /api/v1/users/{id}  # Delete user
 ```
 
 ### URL Shortening
+
+**Note**: Authentication is optional. Unauthenticated users get limited quota (API_QUOTE_FREE=10 requests per 30 min), while authenticated users get higher quota (API_QUOTA=100 requests per 30 min).
+
 ```bash
 POST /api/v1/shorten   # Shorten a URL
-GET  /api/v1/resolve   # Resolve a short URL
+GET  /{shortCode}      # Resolve and redirect to original URL
 ```
 
 ## Database Schema
@@ -275,6 +307,75 @@ make migrate-up
 make migrate-down  # Rollback last migration
 ```
 
+## Monitoring and Observability
+
+The application includes comprehensive monitoring using Prometheus and Grafana.
+
+### Available Metrics
+
+The application exposes the following Prometheus metrics at `/metrics`:
+
+#### HTTP Metrics
+- `http_requests_total` - Total number of HTTP requests (labeled by method, endpoint, status)
+- `http_request_duration_seconds` - Duration of HTTP requests in seconds (histogram)
+- `active_connections` - Number of currently active connections (gauge)
+
+#### Application Metrics
+- `urls_shortened_total` - Total number of URLs shortened
+- `urls_resolved_total` - Total number of URLs resolved
+
+#### Cache Metrics
+- `cache_hits_total` - Total number of cache hits
+- `cache_misses_total` - Total number of cache misses
+- `redis_operation_duration_seconds` - Duration of Redis operations (histogram)
+
+#### Database Metrics
+- `database_query_duration_seconds` - Duration of database queries (histogram)
+
+### Accessing Monitoring Dashboards
+
+After starting with monitoring enabled:
+
+#### Prometheus
+- URL: http://localhost:9090
+- View raw metrics, create queries, check targets
+
+#### Grafana
+- URL: http://localhost:3000
+- Default credentials: `admin` / `admin`
+- Pre-configured dashboards for application, PostgreSQL, and Redis metrics
+
+### Monitoring Stack Services
+
+The monitoring setup includes:
+
+1. **Prometheus** - Scrapes metrics from:
+   - Application (`/metrics` endpoint)
+   - PostgreSQL Exporter (database metrics)
+   - Redis Exporter (cache metrics)
+
+2. **Grafana** - Visualizes metrics with dashboards
+
+3. **PostgreSQL Exporter** - Exports PostgreSQL database metrics
+
+4. **Redis Exporter** - Exports Redis cache metrics
+
+### Example Prometheus Queries
+
+```promql
+# Request rate per second
+rate(http_requests_total[5m])
+
+# 95th percentile response time
+histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+
+# Cache hit ratio
+cache_hits_total / (cache_hits_total + cache_misses_total)
+
+# Active connections over time
+active_connections
+```
+
 ## Testing the API
 
 ### Health Check
@@ -375,14 +476,24 @@ docker exec -it shawty-redis redis-cli -a waifu_waguri
 shawty-ur/
 ├── api/
 │   ├── main.go                 # Application entry point
+│   ├── auth/                   # Authentication logic
+│   │   ├── oauth.go           # OAuth configuration
+│   │   └── session.go         # Session management
+│   ├── middleware/             # HTTP middleware
+│   │   ├── auth.go            # Optional authentication
+│   │   └── prometheus.go      # Metrics collection
+│   ├── metrics/                # Prometheus metrics definitions
+│   │   └── metrics.go
 │   ├── routes/                 # Route handlers
+│   │   ├── auth.go            # OAuth routes
 │   │   ├── health.go          # Health check
 │   │   ├── users.go           # User routes
-│   │   └── shorten.go         # URL shortening routes
+│   │   ├── shorten.go         # URL shortening
+│   │   └── resolve.go         # URL resolution
 │   └── utils/
 │       ├── db/
 │       │   └── db.go          # PostgreSQL connection
-│       └── redis/
+│       └── redisUtil/
 │           └── redis.go       # Redis connection
 ├── app/
 │   └── app.go                 # Application struct & middleware
@@ -392,9 +503,18 @@ shawty-ur/
 │   ├── 00001_create_users_table.sql
 │   ├── 00002_create_urls_table.sql
 │   └── 00003_create_url_analytics_table.sql
+├── monitoring/                # Monitoring stack configuration
+│   ├── docker-compose.monitoring.yml
+│   ├── prometheus/
+│   │   └── prometheus.yml     # Prometheus config
+│   └── grafana/
+│       ├── provisioning/
+│       │   ├── datasources/   # Auto-configure Prometheus
+│       │   └── dashboards/    # Dashboard provisioning
+│       └── dashboards/        # Pre-built dashboards (JSON)
 ├── bin/                       # Compiled binaries
 ├── .env                       # Environment configuration
-├── docker-compose.yml         # Docker services
+├── docker-compose.yml         # Docker services (app, db, redis)
 ├── Makefile                   # Build commands
 └── README.md                  # This file
 ```
